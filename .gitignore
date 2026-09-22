@@ -1,0 +1,7 @@
+env.txt
+.env
+data/
+__pycache__/
+*.pyc
+_upload/
+*-upload.zip

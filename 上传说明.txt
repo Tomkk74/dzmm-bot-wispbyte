@@ -1,0 +1,52 @@
+DZMM 新机器人 · WispByte 测试版（Python）
+========================================
+与现网 Cloudflare 小哈完全分开。
+
+【上传文件】
+整包上传到容器根目录：
+  main.py
+  bot/          （整个文件夹）
+  env.txt       （填好密钥；见下）
+
+或用 zip：dzmm新机器人测试/wispbyte-upload.zip
+
+【WispByte】
+1. Free → Python 3.11
+2. Startup：清空 Git 仓库地址（不要拉 luyao）
+3. 启动命令保持跑 main.py（默认即可）
+4. Environment：可空；密钥放 env.txt 更稳
+5. env.txt 里改：
+   PORT = Address 冒号后数字
+   PUBLIC_BASE = http://IP:端口   （发图必须公网能打开）
+   若已有子域名：PUBLIC_BASE=https://xxx.wisp.uno
+6. Start
+7. 浏览器打开 http://IP:端口/health 应看到 ok:true
+8. Studio 里把 Bot Webhook 改成：
+   http://IP:端口/webhook
+   （或 https://子域名/webhook）
+   Secret 与 env.txt 的 DZMM_BOT_SECRET 一致
+
+【测试指令】
+帮助 / ping / 骰子 / 抽签
+/画 雨中红发少女
+
+【说明】
+- 发消息：本机直连 DZMM，不经 CF，一般无 418
+- 生图：MoeNode → 存本地 data/img → /img 公开 → sendPhoto
+- 测试版不含迷宫 RPG / 管理指令
+- 现网小哈不要动
+��̨������������
+==============
+��ַ��http://��Ĺ�����ַ/admin/
+
+env.txt ���ӣ�
+  ADMIN_PASSWORD=���Լ�����ܹ�������
+
+�÷���
+1. �ܹ��������¼ �� �������г��ֹ���Ⱥ
+2. Ⱥ���ȷ����������Ǽ�Ⱥ
+3. ��̨�Ļ�ӭ�ʡ���������/��ǩ����ͼ��Կ����ģ��
+4. ��Ⱥ�����롹�����Է�Ⱥ�� �� �Է���Ⱥ ID + �������¼��ֻ�ܸı�Ⱥ
+5. Ⱥ��Ҳ�ɷ��������롹�鿴��Ⱥ ID ������루ע��𹫿�ˢ����
+
+�ϴ�ʱ��ش��� static/ Ŀ¼����ҳ�ļ�����
