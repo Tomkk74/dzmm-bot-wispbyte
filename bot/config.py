@@ -46,7 +46,11 @@ def load() -> None:
     DZMM_BOT_SECRET = os.environ.get("DZMM_BOT_SECRET", "").strip()
     MOENODE_API_KEY = os.environ.get("MOENODE_API_KEY", "").strip()
     ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "").strip()
-    PUBLIC_BASE = os.environ.get("PUBLIC_BASE", "").strip().rstrip("/")
+    raw = os.environ.get("PUBLIC_BASE", "").strip().rstrip("/")
+    # 面板常只填 IP:端口；发图 / Studio 需要带协议
+    if raw and "://" not in raw:
+        raw = "http://" + raw
+    PUBLIC_BASE = raw
     try:
         PORT = int(os.environ.get("PORT") or os.environ.get("SERVER_PORT") or "3000")
     except ValueError:
