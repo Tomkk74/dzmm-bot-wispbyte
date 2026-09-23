@@ -1,38 +1,50 @@
-# DZMM Bot · WispByte 独立版（Python）
+﻿# DZMM Bot · 独立版（Python）
 
 与现网 Cloudflare「小哈」分开部署。本机出网发消息，一般无 CF 418。
 
-## WispByte 拉取
+## Vultr / VPS（推荐）
 
-1. Free → Python 3.11  
-2. **Git 仓库**填本仓库 HTTPS 地址（不要拉别的仓）  
-3. 启动命令保持跑 `main.py`  
-4. 在面板 Environment，或容器里自建 `env.txt`：
+系统选 **Ubuntu 22.04 或 24.04**，机房优先 **Singapore / Tokyo**。
+
+```bash
+# SSH 登录后（root）
+curl -fsSL -o /tmp/install-vultr.sh https://raw.githubusercontent.com/Tomkk74/dzmm-bot-wispbyte/main/install-vultr.sh
+bash /tmp/install-vultr.sh
+```
+
+有域名时（自动 HTTPS，推荐）：
+
+```bash
+DOMAIN=你的域名.com bash /tmp/install-vultr.sh
+```
+
+然后编辑 `/opt/dzmm-bot/env.txt`：
 
 ```text
 DZMM_BOT_TOKEN=你的Token
 DZMM_BOT_SECRET=你的WebhookSecret
-MOENODE_API_KEY=
-PUBLIC_BASE=https://你的公网地址
-PORT=面板Address冒号后端口
 ADMIN_PASSWORD=自设后台密码
+PUBLIC_BASE=https://你的域名
+PORT=8787
+DZMM_API_BASE=https://www.dzmm.ai
 ```
 
-也可复制 `env.example.txt` 改名为 `env.txt` 再填。
+```bash
+systemctl restart dzmm-bot
+curl -sS https://你的域名/health
+```
 
-5. Start 后打开 `PUBLIC_BASE/health` 应看到 `ok: true`  
-6. Studio → Bot Webhook 改成：`PUBLIC_BASE/webhook`（Secret 与 env 一致）
+Studio Webhook：`https://你的域名/webhook`
+
+DNS：A 记录指到 Vultr 公网 IP。防火墙放行 **80 / 443**。
+
+## WispByte（旧面板）
+
+Git：`https://github.com/Tomkk74/dzmm-bot-wispbyte.git`  
+Environment 填 Token / Secret / PUBLIC_BASE / PORT。
 
 ## 能力
 
-- `帮助` / `你好` / `ping` / `骰子` / `抽签`
-- `/画 描述`（MoeNode → 本地图 → `/img` → sendPhoto）
-- 后台：`/admin/`（总管理 + 群管理码）
+帮助 / 你好 / ping / 骰子 / 抽签 / `/画` / 后台 `/admin/`
 
-不含现网迷宫 RPG 全量（以本仓代码为准）。
-
-## 注意
-
-- **不要**把 `env.txt` 提交进 Git  
-- 测独立版最好另建一只 Bot，避免抢现网 Webhook  
-- 测完若要回 CF 小哈，把 Studio Webhook 改回 `https://dzmm-template-bot.pages.dev/webhook`
+不要把 `env.txt` 提交进 Git。
