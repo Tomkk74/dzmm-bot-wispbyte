@@ -20,32 +20,13 @@ def _key_for_chat(chatroom_id: str) -> str:
 
 DATA = Path(__file__).resolve().parents[1] / "data"
 IMG_DIR = DATA / "img"
-DB_PATH = DATA / "bot.sqlite"
 _lock = threading.Lock()
 MOE_BASES = ["https://moenode.app", "https://www.moenode.app"]
 
 
 def _db() -> sqlite3.Connection:
-    DATA.mkdir(parents=True, exist_ok=True)
     IMG_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS draw_jobs (
-        id TEXT PRIMARY KEY,
-        chatroom_id TEXT NOT NULL,
-        user_id TEXT,
-        prompt TEXT NOT NULL,
-        moe_job_id TEXT,
-        status TEXT NOT NULL,
-        image_url TEXT,
-        error TEXT,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-    )"""
-    )
-    conn.commit()
-    return conn
+    return store.connect()
 
 
 def parse_draw_prompt(text: str):
@@ -70,33 +51,44 @@ def enqueue_draw(chatroom_id: str, user_id: str, prompt: str, api_key: str = "")
         return {"ok": False, "error": "提示词是空的"}
     now = int(time.time())
     job_id = str(uuid.uuid4())
+    # 先看队列，再在锁外调 Moe（避免长请求占库）
     with _lock:
         conn = _db()
-        active = conn.execute(
-            "SELECT COUNT(*) AS n FROM draw_jobs WHERE status IN ('queued','running') AND moe_job_id IS NOT NULL"
-        ).fetchone()["n"]
-        moe_job_id = None
-        status = "pending"
-        if int(active or 0) == 0:
-            enq = moe_fetch(
-                "/api/v1/generate",
-                "POST",
-                {"prompt": text, "modelId": "anima-turbo", "imageSize": "anima_832_1216"},
-                key=key,
-            )
-            if enq.get("status") == 402:
-                return {"ok": False, "error": "积分不够了"}
-            data = enq.get("data") or {}
-            if enq.get("ok") and data.get("jobId"):
-                moe_job_id = str(data["jobId"])
-                status = "queued"
-        conn.execute(
-            """INSERT INTO draw_jobs(id, chatroom_id, user_id, prompt, moe_job_id, status, image_url, error, created_at, updated_at)
-               VALUES(?,?,?,?,?,?,NULL,NULL,?,?)""",
-            (job_id, chatroom_id, user_id or None, text, moe_job_id, status, now, now),
+        try:
+            active = conn.execute(
+                "SELECT COUNT(*) AS n FROM draw_jobs WHERE status IN ('queued','running') AND moe_job_id IS NOT NULL"
+            ).fetchone()["n"]
+            can_submit = int(active or 0) == 0
+        finally:
+            conn.close()
+
+    moe_job_id = None
+    status = "pending"
+    if can_submit:
+        enq = moe_fetch(
+            "/api/v1/generate",
+            "POST",
+            {"prompt": text, "modelId": "anima-turbo", "imageSize": "anima_832_1216"},
+            key=key,
         )
-        conn.commit()
-        conn.close()
+        if enq.get("status") == 402:
+            return {"ok": False, "error": "积分不够了"}
+        data = enq.get("data") or {}
+        if enq.get("ok") and data.get("jobId"):
+            moe_job_id = str(data["jobId"])
+            status = "queued"
+
+    with _lock:
+        conn = _db()
+        try:
+            conn.execute(
+                """INSERT INTO draw_jobs(id, chatroom_id, user_id, prompt, moe_job_id, status, image_url, error, created_at, updated_at)
+                   VALUES(?,?,?,?,?,?,NULL,NULL,?,?)""",
+                (job_id, chatroom_id, user_id or None, text, moe_job_id, status, now, now),
+            )
+            conn.commit()
+        finally:
+            conn.close()
     return {"ok": True, "id": job_id, "queuedAtMoe": bool(moe_job_id)}
 
 
@@ -193,42 +185,65 @@ def _finalize(row: sqlite3.Row) -> bool:
 
 
 def tick_once() -> dict:
+    pending = None
+    rows = []
     with _lock:
         conn = _db()
-        pending = conn.execute(
-            "SELECT id, prompt, chatroom_id FROM draw_jobs WHERE status='pending' ORDER BY created_at ASC LIMIT 1"
-        ).fetchone()
-        if pending:
+        try:
+            pending = conn.execute(
+                "SELECT id, prompt, chatroom_id FROM draw_jobs WHERE status='pending' ORDER BY created_at ASC LIMIT 1"
+            ).fetchone()
             active = conn.execute(
                 "SELECT COUNT(*) AS n FROM draw_jobs WHERE status IN ('queued','running') AND moe_job_id IS NOT NULL"
             ).fetchone()["n"]
-            if int(active or 0) == 0:
-                key = _key_for_chat(pending["chatroom_id"])
-                if key:
-                    enq = moe_fetch(
-                        "/api/v1/generate",
-                        "POST",
-                        {
-                            "prompt": pending["prompt"],
-                            "modelId": "anima-turbo",
-                            "imageSize": "anima_832_1216",
-                        },
-                        key=key,
-                    )
-                    data = enq.get("data") or {}
-                    if enq.get("ok") and data.get("jobId"):
+            can_submit = pending is not None and int(active or 0) == 0
+            if pending and can_submit:
+                pending = dict(pending)
+            else:
+                pending = None
+            rows = [
+                dict(r)
+                for r in conn.execute(
+                    "SELECT * FROM draw_jobs WHERE status IN ('queued','running') AND moe_job_id IS NOT NULL ORDER BY created_at ASC LIMIT 5"
+                ).fetchall()
+            ]
+        finally:
+            conn.close()
+
+    if pending:
+        key = _key_for_chat(pending["chatroom_id"])
+        if key:
+            enq = moe_fetch(
+                "/api/v1/generate",
+                "POST",
+                {
+                    "prompt": pending["prompt"],
+                    "modelId": "anima-turbo",
+                    "imageSize": "anima_832_1216",
+                },
+                key=key,
+            )
+            data = enq.get("data") or {}
+            if enq.get("ok") and data.get("jobId"):
+                with _lock:
+                    conn = _db()
+                    try:
                         conn.execute(
-                            "UPDATE draw_jobs SET status='queued', moe_job_id=?, updated_at=? WHERE id=?",
+                            "UPDATE draw_jobs SET status='queued', moe_job_id=?, updated_at=? WHERE id=? AND status='pending'",
                             [str(data["jobId"]), int(time.time()), pending["id"]],
                         )
                         conn.commit()
-        rows = conn.execute(
-            "SELECT * FROM draw_jobs WHERE status IN ('queued','running') AND moe_job_id IS NOT NULL ORDER BY created_at ASC LIMIT 5"
-        ).fetchall()
-        conn.close()
+                    finally:
+                        conn.close()
+
     done = 0
     for row in rows:
-        if _finalize(row):
+        # sqlite3.Row 兼容：_finalize 用下标访问
+        class _R:
+            def __getitem__(self, k):
+                return row[k]
+
+        if _finalize(_R()):
             done += 1
     return {"ok": True, "done": done}
 

@@ -54,38 +54,56 @@ DEFAULTS = {
 
 
 def connect() -> sqlite3.Connection:
+    """多线程安全：WAL + busy_timeout，避免 draw tick / webhook 互锁。"""
     DATA.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    conn = sqlite3.connect(str(DB_PATH), timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
 
 def init_db() -> None:
     conn = connect()
-    conn.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS groups (
-          chatroom_id TEXT PRIMARY KEY,
-          title TEXT,
-          first_seen INTEGER NOT NULL,
-          last_seen INTEGER NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS group_settings (
-          chatroom_id TEXT PRIMARY KEY,
-          data_json TEXT NOT NULL,
-          updated_at INTEGER NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS admin_sessions (
-          token TEXT PRIMARY KEY,
-          scope TEXT NOT NULL,
-          chatroom_id TEXT,
-          created_at INTEGER NOT NULL,
-          expires_at INTEGER NOT NULL
-        );
-        """
-    )
-    conn.commit()
-    conn.close()
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS groups (
+              chatroom_id TEXT PRIMARY KEY,
+              title TEXT,
+              first_seen INTEGER NOT NULL,
+              last_seen INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS group_settings (
+              chatroom_id TEXT PRIMARY KEY,
+              data_json TEXT NOT NULL,
+              updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS admin_sessions (
+              token TEXT PRIMARY KEY,
+              scope TEXT NOT NULL,
+              chatroom_id TEXT,
+              created_at INTEGER NOT NULL,
+              expires_at INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS draw_jobs (
+              id TEXT PRIMARY KEY,
+              chatroom_id TEXT NOT NULL,
+              user_id TEXT,
+              prompt TEXT NOT NULL,
+              moe_job_id TEXT,
+              status TEXT NOT NULL,
+              image_url TEXT,
+              error TEXT,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            );
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def touch_group(chatroom_id: str, title: str = "") -> None:
