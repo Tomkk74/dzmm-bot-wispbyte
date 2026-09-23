@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""DZMM Bot 发消息（WispByte 出口，直连，不经 Cloudflare Pages）。"""
+"""DZMM Bot 发消息（Vultr 本机出网）。"""
 from __future__ import annotations
 
 import threading
@@ -12,9 +12,15 @@ from bot.http_util import http_json
 _lock = threading.Lock()
 _preferred: str = ""
 
+# Cloudflare 对自定义 UA 常回 1010；用浏览器头即可
+_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/122.0.0.0 Safari/537.36"
+)
+
 
 def _bases() -> list[str]:
-    """优先用上次成功的镜像，再试其余；可用环境变量 DZMM_API_BASE 指定首选。"""
     preferred = ""
     with _lock:
         preferred = _preferred
@@ -41,6 +47,19 @@ def _remember(base: str) -> None:
         _preferred = base.rstrip("/")
 
 
+def _headers(base: str, token: str | None = None) -> dict:
+    h = {
+        "content-type": "application/json",
+        "user-agent": _UA,
+        "accept": "application/json,text/plain,*/*",
+        "origin": base,
+        "referer": base.rstrip("/") + "/",
+    }
+    if token:
+        h["X-Bot-Token"] = token
+    return h
+
+
 def send_text(chatroom_id: str, content: str) -> dict:
     token = config.DZMM_BOT_TOKEN
     text = str(content or "")[:10000]
@@ -52,11 +71,7 @@ def send_text(chatroom_id: str, content: str) -> dict:
         status, data = http_json(
             "POST",
             base + "/api/bot/send-message",
-            headers={
-                "content-type": "application/json",
-                "X-Bot-Token": token,
-                "user-agent": "dzmm-wispbyte-test/1.0",
-            },
+            headers=_headers(base, token),
             body={"chatroom_id": chatroom_id, "content": text},
             timeout=8,
         )
@@ -67,8 +82,8 @@ def send_text(chatroom_id: str, content: str) -> dict:
             print(f"send_text ok via={base} {ms}ms", flush=True)
             return {"ok": True, "messageId": mid, "via": base, "ms": ms}
         last_err = f"{base}:{status}:{str(data)[:80]}"
-        # 明确失败（鉴权/参数）别盲试完所有镜像拖时间
-        if status in (401, 403, 404):
+        # 1010/403 换下一个镜像；真鉴权失败也别死磕太久
+        if status in (401, 404):
             break
     return {"ok": False, "error": last_err or "all bases failed", "ms": int((time.time() - t0) * 1000)}
 
@@ -86,7 +101,7 @@ def send_photo(chatroom_id: str, photo_url: str, caption: str = "") -> dict:
         status, data = http_json(
             "POST",
             base + "/api/bot/bot" + urllib.parse.quote(token, safe="") + "/sendPhoto",
-            headers={"content-type": "application/json", "user-agent": "dzmm-wispbyte-test/1.0"},
+            headers=_headers(base),
             body=body,
             timeout=12,
         )
@@ -99,6 +114,6 @@ def send_photo(chatroom_id: str, photo_url: str, caption: str = "") -> dict:
             print(f"send_photo ok via={base} {ms}ms", flush=True)
             return {"ok": True, "via": base, "ms": ms}
         last_err = f"{base}:{status}"
-        if status in (401, 403, 404):
+        if status in (401, 404):
             break
     return {"ok": False, "error": last_err or "sendPhoto failed", "ms": int((time.time() - t0) * 1000)}
