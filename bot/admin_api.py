@@ -42,7 +42,11 @@ def handle_admin(handler, method: str, path: str):
     if method == "GET" and pure in ("/admin", "/admin/"):
         return 200, None, "admin/index.html"
     if method == "GET" and pure.startswith("/admin/static/"):
-        return 200, None, pure[len("/admin/") :]  # static/...
+        # /admin/static/admin.css → static/admin/admin.css
+        name = pure[len("/admin/static/") :].lstrip("/")
+        if not name or ".." in name:
+            return 404, {"ok": False, "error": "not found"}, None
+        return 200, None, "admin/" + name
 
     if not pure.startswith("/admin/api"):
         return 404, {"ok": False, "error": "not found"}, None
