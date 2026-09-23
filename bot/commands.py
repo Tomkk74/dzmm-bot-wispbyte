@@ -51,15 +51,10 @@ def handle_message(update: dict) -> dict:
         if not enq.get("ok"):
             send_text(chatroom_id, f"💦 没排上队：{enq.get('error')}")
             return {"ok": True, "draw": False, "enq": enq}
+        # 短回执：不回显长提示词（含大量 @ 时易慢/失败）
         send_text(
             chatroom_id,
-            "\n".join(
-                [
-                    "🎨✨ 已提交画图，排队出图中～" if enq.get("queuedAtMoe") else "🎨✨ 已记下，稍等出图～",
-                    f"📝 {draw[:120]}{'…' if len(draw) > 120 else ''}",
-                    "⏳ 大约 20～90 秒，画好会自动发图",
-                ]
-            ),
+            "🎨 收到 /画，正在排队出图～\n⏳ 大约 20～90 秒，画好会自动发图",
         )
         return {"ok": True, "draw": True, "enq": enq}
 

@@ -14,10 +14,11 @@ PUBLIC_BASE = ""
 PORT = 3000
 
 API_BASES = [
-    "https://www.aifukk.com",
+    # 发消息优先较快镜像；成功后会缓存，下次直打
     "https://www.fuckaibot.com",
-    "https://www.thottai.com",
     "https://www.dzmm.ai",
+    "https://www.aifukk.com",
+    "https://www.thottai.com",
     "https://www.dzmm.io",
 ]
 
